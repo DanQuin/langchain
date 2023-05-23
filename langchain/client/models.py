@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, root_validator
@@ -99,18 +99,23 @@ class ListRunsQueryParams(BaseModel):
         return values
 
 
+class APIFeedbackSource(BaseModel):
+    """API feedback source."""
+
+    type: ClassVar[str] = "api"
+    metadata: Dict[str, Any] | None = None
+
+
 class FeedbackBase(BaseModel):
     """Feedback schema."""
 
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     """The time the feedback was created."""
-    modified_at: datetime = Field(
-        default_factory=datetime.utcnow)
+    modified_at: datetime = Field(default_factory=datetime.utcnow)
     """The time the feedback was last modified."""
     run_id: UUID
     """The associated run ID this feedback is logged for."""
-    metric_name: Optional[str] = None
+    metric_name: str
     """The feedback metric name or type."""
     rating: Optional[float] = None
     """Score to assign the run."""
@@ -118,30 +123,31 @@ class FeedbackBase(BaseModel):
     """The ground-truth value or recommended correction."""
     comment: Optional[str] = None
     """Explanation of the score and other free-form feedback."""
-    feedback_model: Optional[str] = None
-    """The feedback model used to generate this feedback, if AI-assisted."""
-    user_id: Optional[UUID] = None
-    """The user ID of the user who provided this feedback, if human."""
     extra: Dict[str, Any] | None
     """Extra metadata associated with this feedback."""
 
 
 class FeedbackCreate(FeedbackBase):
     """Schema used for creating feedback."""
+
     id: UUID = Field(default_factory=uuid4)
+
+    feedback_source: Optional[APIFeedbackSource] = None
+    """The source of the feedback."""
 
 
 class Feedback(FeedbackBase):
     """Schema for getting feedback."""
+
     id: UUID
+    feedback_source: Optional[Dict] = None
+    """The source of the feedback. In this case"""
 
 
 class ListFeedbackQueryParams(BaseModel):
     """Query Params for listing feedbacks."""
 
     run: Optional[List[UUID]] = None
-    metric_name: Optional[str] = None
-    user: Optional[List[UUID]] = None
     limit: int = 100
     offset: int = 0
 

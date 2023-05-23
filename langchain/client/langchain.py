@@ -12,6 +12,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -26,7 +27,9 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from langchain.base_language import BaseLanguageModel
 from langchain.callbacks.tracers.schemas import Run, TracerSession
 from langchain.chains.base import Chain
+from langchain.client.feedback_utils import Evaluator
 from langchain.client.models import (
+    APIFeedbackSource,
     Dataset,
     DatasetCreate,
     Example,
@@ -226,10 +229,7 @@ class LangChainPlusClient(BaseSettings):
         query_params = ListRunsQueryParams(
             session_id=session_id, run_type=run_type, **kwargs
         )
-        filtered_params = {
-            k: v for k, v in query_params.dict().items() if v is not None
-        }
-        response = self._get("/runs", params=filtered_params)
+        response = self._get("/runs", params=query_params.dict(exclude_none=True))
         raise_for_status_with_text(response)
         yield from [Run(**run) for run in response.json()]
 
@@ -389,25 +389,30 @@ class LangChainPlusClient(BaseSettings):
     def create_feedback(
         self,
         run_id: str,
+        metric_name: str,
         *,
-        metric_name: Optional[str] = None,
-        rating: Optional[float] = None,
-        correction: Optional[str] = None,
-        comment: Optional[str] = None,
-        feedback_model: Optional[str] = None,
-        user_id: Optional[str] = None,
-        extra: Optional[Dict[str, Any]] = None
+        score: Optional[float] = None,
+        source_info: Optional[Dict[str, Any]] = None,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> Feedback:
-        """Create a feedback in the LangChain+ API."""
+        """Create a feedback in the LangChain+ API.
+
+        Args:
+            run_id: The ID of the run to provide feedback on.
+            metric_name: The name of the metric, tag, or 'aspect' this
+                feedback is about.
+            score: The score to rate this run on the metric. If None,
+                the score will be treated as a tag.
+            source_info: Information about the source of this feedback.
+            extra: Extra information to include with the feedback.
+        """
+        feedback_source = APIFeedbackSource(metadata=source_info)
         feedback = FeedbackCreate(
             run_id=run_id,
             metric_name=metric_name,
-            rating=rating,
-            correction=correction,
-            comment=comment,
-            feedback_model=feedback_model,
-            user_id=user_id,
-            extra=extra
+            score=score,
+            feedback_source=feedback_source,
+            extra=extra,
         )
         response = requests.post(
             self.api_url + "/feedback",
@@ -429,25 +434,18 @@ class LangChainPlusClient(BaseSettings):
         self,
         *,
         run_ids: Optional[List[str]] = None,
-        metric_name: Optional[str] = None,
         **kwargs: Any,
     ) -> Iterator[Feedback]:
         """List the feedback objects on the LangChain+ API."""
         params = ListFeedbackQueryParams(
             run=run_ids,
-            metric_name=metric_name,
             **kwargs,
         )
-        filtered_params = {
-            k: v for k, v in params.dict().items() if v is not None
-        }
-        response = self._get("/feedback", params=filtered_params)
+        response = self._get("/feedback", params=params.dict(exclude_none=True))
         raise_for_status_with_text(response)
         yield from [Feedback(**feedback) for feedback in response.json()]
 
-    def delete_feedback(
-            self,
-            feedback_id: str) -> None:
+    def delete_feedback(self, feedback_id: str) -> None:
         """Delete a feedback by ID."""
         response = requests.delete(
             f"{self.api_url}/feedback/{feedback_id}",
